@@ -3,11 +3,12 @@
 # Build docker images
 echo "Build docker images"
 sudo docker build --tag netubuntu ~/baseimage
+sudo docker build --tag serverworkercontainer ~/serverworkercontainer/
 sudo docker build --tag servercontainer ~/servercontainer
 
 # Cleanup and setup
 echo "Docker cleanup"
-sudo docker rm -f client server router
+sudo docker rm -f client server server_worker1 server_worker2 router
 sudo docker network rm client_net server_net
 echo "Enable interfaces"
 sudo ip l set ens19 up
@@ -25,6 +26,8 @@ sudo docker network connect server_net router --ip 10.0.2.254
 
 # Client and server
 echo "Start server container"
+sudo docker run -d --net server_net --ip 10.0.2.101 --cap-add=NET_ADMIN --name server_worker1 serverworkercontainer
+sudo docker run -d --net server_net --ip 10.0.2.102 --cap-add=NET_ADMIN --name server_worker2 serverworkercontainer
 sudo docker run -d --net server_net --ip 10.0.2.100 --cap-add=NET_ADMIN --name server servercontainer
 echo "Start client container"
 sudo docker run -d --net client_net --ip 10.0.1.100 --cap-add=NET_ADMIN --name client -v "$(pwd)":/browsertime sitespeedio/browsertime http://10.0.2.100
