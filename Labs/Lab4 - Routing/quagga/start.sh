@@ -1,5 +1,5 @@
 #https://wiki.ubuntu.com/JonathanFerguson/Quagga
 
-systemctl start zebra
-systemctl start ospfd
+service zebra start 
+service ospfd start 
 /root/sleep.sh
