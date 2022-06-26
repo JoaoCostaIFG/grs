@@ -1,0 +1,57 @@
+@startuml
+
+nwdiag {
+  network load_balancers {
+    address = "10.0.3.0/24";
+    webapp[address = "10.0.3.1"];
+    W1;
+    W2;
+    W3;
+  }
+
+  network internal_B {
+    address = "10.0.2.0/24";
+    R_B [shape = interface, address="10.0.2.1"]
+    db [shape = database, address = "10.0.2.2"];
+    pgadmin [shape = database, address = "10.0.2.3"];
+    DHCP_B [shape = rectangle, address = "10.0.2.4"];
+    Employee1 [shape = entity]
+    Employee2 [shape = entity]
+    Employee3 [shape = entity]
+  }
+
+  network dmz_B {
+    address = "172.0.1.0/28";
+    DNS [shape = rectangle, address="172.0.1.6"]
+    webapp [shape = rectangle, address="172.0.1.5"];
+    VPN_B [shape = rectangle, address="172.0.1.4"]
+    firewall_B [shape = queue, address="172.0.1.3"];
+    ER_B [shape = interface, address="172.0.1.1"];
+    R_B [shape = interface, address="172.0.1.2"];
+  }
+
+  network pubnet {
+    address = "172.31.50.0/24";
+    ER_B [shape = interface, address="172.31.50.1"];
+    ER_C [shape = interface, address="172.31.50.2"];
+    internet [shape = cloud];
+  }
+
+  network dmz_C {
+    address = "172.1.1.0/29";
+    ER_C [shape = interface, address="172.1.1.1"]
+    firewall_C [shape = queu, address="172.1.1.3"]
+    R_C [shape = interfac, address="172.1.1.2"]
+  }
+
+  network internal_C {
+    address = "10.1.2.0/24";
+    R_C [shape = interface, address="10.1.2.1"]
+    DHCP_C [shape = rectangle, address="10.1.2.2"];
+    Nagios [shape = rectangle, address = "10.1.2.3"];
+    NetManager1 [shape = entity]
+    NetManager2 [shape = entity]
+    NetManager3 [shape = entity]
+  }
+}
+@enduml

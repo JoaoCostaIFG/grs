@@ -1,0 +1,229 @@
+version: "3.8"
+networks:
+  webapp_b:
+    name: webapp_b
+    driver: bridge
+    ipam:
+      config:
+        - subnet: webapp_b_subnet
+          gateway: webapp_b_gateway
+  internal_b:
+    name: internal_b
+    driver: macvlan
+    driver_opts:
+      parent: ens19
+    ipam:
+      config:
+        - subnet: internal_b_subnet
+          gateway: internal_b_gateway
+  dmz_b:
+    name: dmz_b
+    driver: bridge
+    ipam:
+      config:
+        - subnet: dmz_b_subnet
+          gateway: dmz_b_gateway
+  pubnet:
+    name: pubnet
+    ipam:
+      config:
+        - subnet: pubnet_subnet
+          gateway: pubnet_gateway
+  internet:
+    name: internet
+    driver: macvlan
+    driver_opts:
+      parent: ens20
+    ipam:
+      config:
+        - subnet: internet_subnet
+          gateway: internet_gateway
+
+services:
+  # PUBLIC NET
+  er_b:
+    build: ./edge_router
+    container_name: er_b
+    sysctls:
+      - net.ipv4.ip_forward=1
+    cap_add:
+      - NET_ADMIN
+    entrypoint: er_b_entrypoint
+    networks:
+      dmz_b:
+        ipv4_address: er_b_dmz_b
+      pubnet:
+        ipv4_address: er_b_pubnet
+      internet:
+        ipv4_address: er_b_internet
+  external_host_b:
+    build: ./external_host
+    container_name: external_host_b
+    cap_add:
+      - NET_ADMIN
+    entrypoint: external_host_b_entrypoint
+    networks:
+      pubnet:
+        ipv4_address: external_host_b_pubnet
+  # DMZ
+  ## ROUTERS
+  r_b:
+    build: ./router
+    container_name: r_b
+    sysctls:
+      - net.ipv4.ip_forward=1
+    cap_add:
+      - NET_ADMIN
+    entrypoint: r_b_entrypoint
+    networks:
+      internal_b:
+        ipv4_address: r_b_internal_b
+      dmz_b:
+        ipv4_address: r_b_dmz_b
+  firewall:
+    build: ./firewall
+    container_name: firewall
+    cap_add:
+      - NET_ADMIN
+    entrypoint: firewall_entrypoint
+    networks:
+      dmz_b:
+        ipv4_address: firewall_dmz_b
+  ## VPN
+  ## IMPORTANT: The default gateway is hard-coded in the container's files. Be mindful of this when changing the IPs of stuff.
+  wireguard:
+    build: ./wireguard
+    container_name: wireguard
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Lisbon
+      - SERVERURL=wireguard_dmz_b
+      - SERVERPORT=51820
+      - PEERS=10
+      - PEERDNS=auto
+      - INTERNAL_SUBNET=10.0.1.0
+      - ALLOWEDIPS=0.0.0.0/0
+      - LOG_CONFS=true
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    volumes:
+      - wireguard_config:/config
+      - /lib/modules:/lib/modules
+    ports:
+      - 51820:51820/udp
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv4.ip_forward=1
+    networks:
+      dmz_b:
+        ipv4_address: wireguard_dmz_b
+    restart: unless-stopped
+  ## WEBAPP (deals with webapp net)
+  webapp_worker1:
+    build: ./webapp_worker
+    container_name: webapp_worker1
+    networks:
+      webapp_b:
+        ipv4_address: webapp_worker1_webapp_b
+  webapp_worker2:
+    build: ./webapp_worker
+    container_name: webapp_worker2
+    networks:
+      webapp_b:
+        ipv4_address: webapp_worker2_webapp_b
+  webapp:
+    build: ./webapp
+    container_name: webapp
+    cap_add:
+      - NET_ADMIN
+    entrypoint: webapp_entrypoint
+    networks:
+      webapp_b:
+        ipv4_address: webapp_webapp_b
+      dmz_b:
+        ipv4_address: webapp_dmz_b
+
+  # INTERNAL
+  dhcp_b:
+    build: ./dhcp
+    container_name: dhcp_b
+    cap_add:
+      - NET_ADMIN
+    entrypoint: dhcp_b_entrypoint
+    networks:
+      internal_b:
+        ipv4_address: dhcp_b_internal_b
+  ## DB
+  postgres:
+    image: postgres:14
+    container_name: postgres_container
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: postgres_db
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      internal_b:
+        ipv4_address: postgres_internal_b
+  pgadmin:
+    build: pgadmin
+    container_name: pgadmin_container
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: secret
+      PGADMIN_LISTEN_PORT: 80
+    cap_add:
+      - NET_ADMIN
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+      internal_b:
+        ipv4_address: pgadmin_internal_b
+    entrypoint: pgadmin_entrypoint
+  ## EMPLOYEES
+  webdev1:
+    build: ./webdev
+    container_name: webdev1
+    cap_add:
+      - NET_ADMIN
+    networks:
+      internal_b:
+        ipv4_address: webdev1_internal_b
+  webdev2:
+    build: ./webdev
+    container_name: webdev2
+    cap_add:
+      - NET_ADMIN
+    networks:
+      internal_b:
+        ipv4_address: webdev2_internal_b
+  dns:
+    build: ./dns
+    container_name: dns
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - /etc/docker/compose/lisboa/dns/externals:/etc/bind/externals
+      - /etc/docker/compose/lisboa/dns/internals:/etc/bind/internals
+      - /etc/docker/compose/lisboa/dns/named.conf:/etc/bind/named.conf
+      - /etc/docker/compose/lisboa/dns/named.conf.local:/etc/bind/named.conf.local
+      - /etc/docker/compose/lisboa/dns/named.conf.options:/etc/bind/named.conf.options
+    entrypoint: dns_entrypoint
+    networks:
+      dmz_b:
+        ipv4_address: dns_dmz_b
+volumes:
+  db-data:
+  pgadmin-data:
+  wireguard_config:
